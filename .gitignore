@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.DS_Store
+.venv/
+# NOTE: predictions.jsonl and SCOREBOARD.md are intentionally TRACKED —
+# they are the public, append-only record. Do not ignore them.
