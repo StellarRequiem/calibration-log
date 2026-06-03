@@ -106,6 +106,5 @@ class CalibrationLog:
                            f"{'YES' if o else 'NO'}_ {'✓' if hit else '✗'} "
                            f"(brier {round((p['prob'] - o) ** 2, 3)})")
             out.append("")
-        out.append("_Generated from `predictions.jsonl` (append-only, hash-chained). "
-                   "Re-run `calibration-log render`._")
+        out.append("_Generated from an append-only, hash-chained log._")
         return "\n".join(out)

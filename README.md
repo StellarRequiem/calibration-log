@@ -47,6 +47,10 @@ See [`SCOREBOARD.md`](SCOREBOARD.md) — auto-generated from the log, empty unti
 | 0.2-0.4 | 0.30 | 0.25 | 4 |
 ```
 
+## Tracks
+
+Beyond personal predictions, the log hosts **dedicated tracks** — e.g. an automated system publishing its own record. See [`tracks/YGGDRASIL.md`](tracks/YGGDRASIL.md): the real, scored track record of the **Yggdrasil** paper-trading system — published honest-negative (Brier ≈ no-skill), losses and all, with Nevada court-order categories excluded. That's the point: a record you can't curate.
+
 ## Tests
 
 ```sh
