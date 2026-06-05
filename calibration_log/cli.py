@@ -6,10 +6,13 @@ and commits (the public, timestamped audit trail). `publish` pushes.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
+from .govern import AUTO_SUSPECT_HIT_RATE, govern, hit_rate
 from .log import CalibrationLog
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,6 +49,13 @@ def main(argv=None) -> int:
     sub.add_parser("score", help="print the scoreboard")
     sub.add_parser("render", help="(re)write SCOREBOARD.md")
     sub.add_parser("publish", help="git push the log")
+    vp = sub.add_parser(
+        "verify", help="govern a track: chain integrity + auto-suspect + staleness")
+    vp.add_argument("--track", help="track under tracks/ (e.g. 'yggdrasil'); default: the main log")
+    vp.add_argument("--log", help="explicit path to a predictions.jsonl chain (overrides --track)")
+    vp.add_argument("--strict", action="store_true",
+                    help="exit non-zero on auto-suspect/staleness too, not just a broken chain")
+    vp.add_argument("--json", action="store_true", help="machine-readable verdict")
     args = ap.parse_args(argv)
 
     log = CalibrationLog(LOG)
@@ -70,7 +80,57 @@ def main(argv=None) -> int:
         elif args.cmd == "publish":
             r = _git("push", "origin", "HEAD")
             print((r.stdout + r.stderr).strip() or "pushed")
+        elif args.cmd == "verify":
+            return _verify(args)
     except (ValueError, KeyError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     return 0
+
+
+def _verify(args) -> int:
+    """Govern a track and print the verdict. Exit 0 iff it passes the gate
+    (a broken chain always fails; --strict also fails on auto-suspect/staleness)."""
+    if args.log:
+        path = Path(args.log)
+    elif args.track:
+        path = ROOT / "tracks" / f"{args.track}.jsonl"
+    else:
+        path = LOG
+    if not path.exists():
+        print(f"error: no chain at {path}", file=sys.stderr)
+        return 2
+
+    log = CalibrationLog(path)
+    s = log.score()
+    preds, res = log.predictions(), log.resolutions()
+    resolved_pairs = [(preds[i]["prob"], res[i]) for i in preds if i in res]
+    now = datetime.now(timezone.utc)
+    findings, ok = govern(s, resolved_pairs, preds, res, now, strict=args.strict)
+
+    if args.json:
+        print(json.dumps({"track": path.name, "ok": ok, "score": s,
+                          "findings": findings}, indent=2))
+        return 0 if ok else 1
+
+    hr = hit_rate(resolved_pairs)
+    chain = "intact ✓" if s["chain_ok"] else f"BROKEN — {s['chain_msg']}"
+    print(f"calibration feed — {path.name}")
+    print("=" * 44)
+    print(f"  chain     : {chain}")
+    print(f"  record    : {s['total']} predictions · {s['resolved']} resolved · "
+          f"{s['pending']} open")
+    print(f"  brier     : {s['brier'] if s['brier'] is not None else 'n/a'}  "
+          f"(0.25 = no skill, 0 = perfect)")
+    print(f"  hit-rate  : {f'{hr:.0%}' if hr is not None else 'n/a'}  "
+          f"(auto-suspect above {AUTO_SUSPECT_HIT_RATE:.0%})")
+    if findings:
+        print("\n  findings:")
+        for f in findings:
+            print(f"    [{f['level']}] {f['msg']}")
+    else:
+        print("\n  findings: none — chain intact, not auto-suspect, current")
+    print()
+    print("VERIFIED — feed governed, no hard failure" if ok
+          else "GATE FAILED — see findings above")
+    return 0 if ok else 1
