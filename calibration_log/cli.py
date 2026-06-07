@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .govern import AUTO_SUSPECT_HIT_RATE, govern, hit_rate
 from .log import CalibrationLog
+from .reconcile import load_source, published_resolved, reconcile
 
 ROOT = Path(__file__).resolve().parent.parent
 LOG = ROOT / "predictions.jsonl"
@@ -56,6 +57,15 @@ def main(argv=None) -> int:
     vp.add_argument("--strict", action="store_true",
                     help="exit non-zero on auto-suspect/staleness too, not just a broken chain")
     vp.add_argument("--json", action="store_true", help="machine-readable verdict")
+    rc = sub.add_parser(
+        "reconcile",
+        help="prove a published track matches its live source (no cherry-picking / doctoring)")
+    rc.add_argument("--source", required=True,
+                    help="operator's read-only export of ELIGIBLE RESOLVED outcomes: "
+                         "a {src: outcome} JSON object, a list of {src,outcome}, or JSONL")
+    rc.add_argument("--track", help="track under tracks/ (e.g. 'yggdrasil'); default: the main log")
+    rc.add_argument("--log", help="explicit path to a track chain (overrides --track)")
+    rc.add_argument("--json", action="store_true", help="machine-readable verdict")
     args = ap.parse_args(argv)
 
     log = CalibrationLog(LOG)
@@ -82,6 +92,8 @@ def main(argv=None) -> int:
             print((r.stdout + r.stderr).strip() or "pushed")
         elif args.cmd == "verify":
             return _verify(args)
+        elif args.cmd == "reconcile":
+            return _reconcile(args)
     except (ValueError, KeyError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -134,3 +146,54 @@ def _verify(args) -> int:
     print("VERIFIED — feed governed, no hard failure" if ok
           else "GATE FAILED — see findings above")
     return 0 if ok else 1
+
+
+def _reconcile(args) -> int:
+    """Reconcile a published track against the operator's live-source export.
+
+    Exit 0 iff every eligible resolved source item is published with the same
+    outcome — no MISSING (cherry-picked), FLIPPED (doctored), or EXTRA (fabricated)."""
+    if args.log:
+        path = Path(args.log)
+    elif args.track:
+        path = ROOT / "tracks" / f"{args.track}.jsonl"
+    else:
+        path = LOG
+    if not path.exists():
+        print(f"error: no chain at {path}", file=sys.stderr)
+        return 2
+    src_path = Path(args.source)
+    if not src_path.exists():
+        print(f"error: no source export at {src_path}", file=sys.stderr)
+        return 2
+
+    pub = published_resolved(path)
+    src = load_source(src_path)
+    r = reconcile(pub, src)
+
+    if args.json:
+        print(json.dumps({"track": path.name, "ok": r.ok, "matched": r.matched,
+                          "missing": r.missing, "flipped": r.flipped, "extra": r.extra}, indent=2))
+        return 0 if r.ok else 1
+
+    print(f"reconcile — {path.name} vs {src_path.name}")
+    print("=" * 44)
+    print(f"  published resolved : {len(pub)}")
+    print(f"  source resolved    : {len(src)}")
+    print(f"  matched            : {r.matched}")
+    if r.missing:
+        print("\n  MISSING (source recorded, not published — cherry-picked):")
+        for k, o in sorted(r.missing.items()):
+            print(f"    {k} -> {'YES' if o else 'NO'}")
+    if r.flipped:
+        print("\n  FLIPPED (published outcome != source — doctored):")
+        for k, d in sorted(r.flipped.items()):
+            print(f"    {k}: published {'YES' if d['published'] else 'NO'} "
+                  f"vs source {'YES' if d['source'] else 'NO'}")
+    if r.extra:
+        print("\n  EXTRA (published, source never recorded — fabricated):")
+        for k, o in sorted(r.extra.items()):
+            print(f"    {k} -> {'YES' if o else 'NO'}")
+    print()
+    print("VERIFIED — " + r.summary() if r.ok else "GATE FAILED — " + r.summary())
+    return 0 if r.ok else 1

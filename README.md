@@ -70,7 +70,25 @@ See [`SCOREBOARD.md`](SCOREBOARD.md) — auto-generated from the log, empty unti
 
 Beyond personal predictions, the log hosts **dedicated tracks** — e.g. an automated system publishing its own record. See [`tracks/YGGDRASIL.md`](tracks/YGGDRASIL.md): the real, scored track record of the **Yggdrasil** paper-trading system — published honest-negative (Brier ≈ no-skill), losses and all, with Nevada court-order categories excluded. That's the point: a record you can't curate.
 
-The Yggdrasil track is also **reconciled against its live source**: a read-only check (on the operator's side, where the system's database lives) proves every eligible resolved trade is published, with the *same* outcome the system recorded — so the public record can't be quietly cherry-picked or doctored, only completed.
+The Yggdrasil track is also **reconciled against its live source**: a read-only check (on the operator's side, where the system's database lives) proves every eligible resolved trade is published, with the *same* outcome the system recorded — so the public record can't be quietly cherry-picked or doctored, only completed. **This is a runnable check, not a promise** — see [Reconciliation](#reconciliation).
+
+## Reconciliation
+
+The claim above is mechanized, not asserted. The reconcile engine compares the published track against a read-only export of the live system's **eligible, resolved** outcomes — keyed by the stable source id `src` — and fails on any of:
+
+- **MISSING** — the source recorded a resolved item the track omits (a hidden loss → cherry-picking)
+- **FLIPPED** — a published outcome differs from what the source recorded (doctoring)
+- **EXTRA** — the track publishes an outcome the source never recorded (fabrication)
+
+```sh
+# operator-side: export the live system's eligible resolved outcomes (read-only) as
+# {src: outcome}, a list of {src, outcome}, or JSONL — then reconcile:
+calibration-log reconcile --track yggdrasil --source source-export.json
+# exit 0 = every eligible resolved item is published with the same outcome
+# exit 1 = divergence (prints the MISSING / FLIPPED / EXTRA items)
+```
+
+The logic lives in [`calibration_log/reconcile.py`](calibration_log/reconcile.py) and is covered by [`tests/test_reconcile.py`](tests/test_reconcile.py). The source export is produced on the operator's side (the live database is operator-only), so this repo carries the *check*, not the system's schema.
 
 ## Tests
 
@@ -79,7 +97,14 @@ pip install -e ".[dev]"
 pytest
 ```
 
-No dependencies — pure standard library.
+Runtime dependency: [`verity-core`](https://github.com/StellarRequiem/verity-core) — the hash-chained audit primitive is imported from the spine, not re-vendored, so `pip install -e .` pulls it. Otherwise standard library.
+
+## VERIFIED
+
+- **Tested** — `pytest` green: 31 tests (12 cover reconcile: the MISSING / FLIPPED / EXTRA vectors, the `src`-keyed track parser, all three source formats, and an end-to-end hidden-loss catch). CI runs the suite on Python 3.11/3.12/3.13 and dogfoods the `verify` gate.
+- **Results** — live Yggdrasil track: 23 predictions · 22 resolved · Brier ≈ no-skill, losses included (an honest-negative record).
+- **Live-proof** — `reconcile` run against the real `tracks/yggdrasil.jsonl`: an honest export of all 22 resolved items → `VERIFIED ✓` (exit 0); a doctored export (one flipped + one hidden loss) → `GATE FAILED` (exit 1), naming the MISSING and FLIPPED items.
+- **Gaps** — the source export is operator-side (the live DB is operator-only), so CI exercises the reconcile engine on fixtures; the end-to-end reconcile against the live database is run by the operator.
 
 ## License
 
