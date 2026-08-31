@@ -90,6 +90,70 @@ calibration-log reconcile --track yggdrasil --source source-export.json
 
 The logic lives in [`calibration_log/reconcile.py`](calibration_log/reconcile.py) and is covered by [`tests/test_reconcile.py`](tests/test_reconcile.py). The source export is produced on the operator's side (the live database is operator-only), so this repo carries the *check*, not the system's schema.
 
+## Feed it as a side effect — `hook`
+
+This log was correct and empty for months, and it was not alone: a survey of the
+surrounding repositories found four verification mechanisms built well and then never
+fed. The cause is structural rather than personal. Feeding each one is a *separate
+act* — stop, change directory, run a second tool in a second repository. That cost is
+small and it is paid every single time, which is why every counter stayed at zero.
+
+So registration moves onto something already done. Every unit of work ends in a commit,
+and the message is written anyway. One more line in it:
+
+```
+Predict: 0.70 2026-12-31 the wired edge count is still exactly 17
+```
+
+```
+calibration-log hook install --repo . --track <name>
+calibration-log hook status  --repo .
+calibration-log hook uninstall --repo .
+```
+
+`post-commit`, deliberately, not `commit-msg`. A hook that can reject a commit gets
+bypassed with `--no-verify` and then deleted, and an unfed mechanism is the exact
+failure this exists to fix. It cannot fail or delay a commit — every path in it ends in
+`exit 0` — and it refuses to overwrite a `post-commit` hook it did not write.
+
+Registration is keyed on the *content* of the prediction, not the commit, so a
+`git commit --amend` re-presents the same claim and the second registration is refused
+rather than duplicated.
+
+A commit whose message carries a `VERIFIED` block but no `Predict:` line is **noted on
+stderr and never rejected**. Criterion 4 of the Standard is *Calibrated*, and the honest
+state of most work is that it makes no predictive claim — N/A, not a failure. Naming the
+gap at the moment doneness is claimed is the deliverable; enforcing a quota would only
+manufacture filler predictions and a Brier score that means nothing.
+
+Trailers are anchored at column 0, and that is load-bearing. The first real commit this
+shipped on registered a prediction whose claim was the literal text `<claim>` — the
+parser had matched the indented *example* in the message's own prose. Git trailers live
+at column 0 and every way of quoting one puts something in front of it, so the anchor
+separates them exactly.
+
+**The remaining cost is one install per repository**, and that is an honest one rather
+than zero. A global `core.hooksPath` would make it zero across every repo at once, at
+the price of a machine-wide setting that clobbers any other global hook — a trade worth
+making deliberately, not by default.
+
+## Retract without deleting — `void`
+
+```
+calibration-log void p1 --reason "parser artifact, never a real claim"
+```
+
+An append-only chain cannot be rewritten, which is the property that makes it worth
+trusting. But it still needs a way to say *this entry was never a claim* — otherwise a
+parser bug or a duplicate sits in the record forever, unresolvable except by inventing
+an outcome for it. `void` appends a retraction with a reason; the original entry stays
+in the chain, verifiable, and the scoreboard lists voided entries rather than hiding
+them. A retraction is as permanent and as public as the claim was.
+
+The abuse this obviously invites is voiding the predictions you lost, so the rule is
+narrow and absolute: **a resolved prediction can never be voided.** A loss is by
+definition resolved, so there is no path from a bad outcome to a clean record.
+
 ## Tests
 
 ```sh
