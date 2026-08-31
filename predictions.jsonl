@@ -1,0 +1,1 @@
+{"seq": 0, "prev_hash": "GENESIS", "actor": "operator", "event_type": "predict", "event_data": {"id": "p1", "claim": "<claim>", "prob": 0.7, "by": "2026-12-31", "src": "calibration-log:257139457526e1ec"}, "timestamp": "2026-08-31T08:41:07.296792+00:00", "entry_hash": "cc30ae541f962a3a468a454c7ae273180b975d9ba6972a6bab33d41902bfb75b"}
