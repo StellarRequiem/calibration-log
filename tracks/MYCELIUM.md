@@ -1,6 +1,6 @@
 # Calibration scoreboard
 
-_7 predictions · 0 resolved · 7 open · chain intact ✓_
+_8 predictions · 0 resolved · 8 open · chain intact ✓_
 
 _No resolved predictions yet — the Brier score appears once you resolve one._
 
@@ -13,5 +13,6 @@ _No resolved predictions yet — the Brier score appears once you resolve one._
 - **p5** — Mycelium's 'wired' repository-edge count is still exactly 17 — _p=0.55, by 2026-11-30_
 - **p6** — At least one of the 26 currently-unverified authority pins turns out to be a Mycelium parser artifact rather than real drift — _p=0.35, by 2026-12-31_
 - **p7** — 10.00-AGENT-INDEX.md is still drifted from the pin recorded in NOTE-OPS-INDEX-DISK-SCAN-2026-08-16.md — _p=0.65, by 2026-11-30_
+- **p8** — at least 3 predictions reach the mycelium track through the commit-trailer hook rather than by hand — _p=0.6, by 2026-12-31_
 
 _Generated from an append-only, hash-chained log._
