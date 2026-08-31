@@ -65,6 +65,13 @@ def main(argv=None) -> int:
     rr.add_argument("id")
     rr.add_argument("outcome", help="yes | no")
     rr.add_argument("--track", help="track under tracks/; default: the main log")
+    vd = sub.add_parser(
+        "void", help="retract an OPEN prediction (a resolved one can never be voided)")
+    vd.add_argument("id")
+    vd.add_argument("--reason", required=True,
+                    help="why it was never a real claim; an unexplained retraction is "
+                         "indistinguishable from hiding one")
+    vd.add_argument("--track", help="track under tracks/; default: the main log")
     sc = sub.add_parser("score", help="print the scoreboard")
     sc.add_argument("--track", help="track under tracks/; default: the main log")
     sub.add_parser("render", help="(re)write SCOREBOARD.md")
@@ -118,6 +125,11 @@ def main(argv=None) -> int:
             _render(log, board)
             _commit(f"resolve {args.id}: {'yes' if o else 'no'}", chain, board)
             print(f"resolved {args.id} -> {'YES' if o else 'NO'}")
+        elif args.cmd == "void":
+            log.void(args.id, args.reason)
+            _render(log, board)
+            _commit(f"void {args.id}: {args.reason[:60]}", chain, board)
+            print(f"voided {args.id} — {args.reason}")
         elif args.cmd == "score":
             print(log.render())
         elif args.cmd == "render":
@@ -155,7 +167,7 @@ def _verify(args) -> int:
 
     log = CalibrationLog(path)
     s = log.score()
-    preds, res = log.predictions(), log.resolutions()
+    preds, res = log.live_predictions(), log.resolutions()
     resolved_pairs = [(preds[i]["prob"], res[i]) for i in preds if i in res]
     now = datetime.now(timezone.utc)
     findings, ok = govern(s, resolved_pairs, preds, res, now, strict=args.strict)
@@ -171,7 +183,8 @@ def _verify(args) -> int:
     print("=" * 44)
     print(f"  chain     : {chain}")
     print(f"  record    : {s['total']} predictions · {s['resolved']} resolved · "
-          f"{s['pending']} open")
+          f"{s['pending']} open"
+          + (f" · {s['voided']} voided" if s.get("voided") else ""))
     print(f"  brier     : {s['brier'] if s['brier'] is not None else 'n/a'}  "
           f"(0.25 = no skill, 0 = perfect)")
     print(f"  hit-rate  : {f'{hr:.0%}' if hr is not None else 'n/a'}  "

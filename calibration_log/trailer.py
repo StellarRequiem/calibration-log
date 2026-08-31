@@ -41,13 +41,21 @@ from dataclasses import dataclass
 from datetime import date
 
 #: `Predict: <prob> <YYYY-MM-DD> <claim>` — one line, git-trailer shaped.
+#:
+#: Anchored at column 0 with NO leading whitespace, and that is load-bearing. The first
+#: real commit this shipped on registered a prediction whose claim was the literal text
+#: `<claim>` — the parser had matched the indented *example* in the message's own prose.
+#: It is the string-literal bug from the import resolver wearing a different hat: text
+#: that looks like a directive but sits inside a quotation. Git's own trailers are at
+#: column 0, and every convention for quoting one (indent, fence, blockquote) puts
+#: something before it, so the anchor separates the two exactly.
 RE_TRAILER = re.compile(
-    r"^\s*Predict:\s*(?P<prob>\d*\.?\d+)\s*(?P<pct>%?)\s+"
+    r"^Predict:[ \t]*(?P<prob>\d*\.?\d+)[ \t]*(?P<pct>%?)[ \t]+"
     r"(?P<by>\d{4}-\d{2}-\d{2})\s+(?P<claim>\S.*?)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 #: anything shaped like a Predict trailer, so a malformed one is reported not dropped
-RE_LOOSE = re.compile(r"^\s*Predict:\s*(?P<rest>.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+RE_LOOSE = re.compile(r"^Predict:[ \t]*(?P<rest>.*?)\s*$", re.IGNORECASE | re.MULTILINE)
 #: the Standard's closing block, at the start of a line
 RE_VERIFIED = re.compile(r"^\s*VERIFIED\b", re.MULTILINE)
 

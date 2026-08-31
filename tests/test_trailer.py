@@ -185,3 +185,109 @@ def test_status_reports_absent_then_present(repo):
     assert main(["hook", "status", "--repo", str(repo)]) == 1
     main(["hook", "install", "--repo", str(repo)])
     assert main(["hook", "status", "--repo", str(repo)]) == 0
+
+
+# --------------------------------------------- regression: the example-in-prose bug
+
+def test_an_indented_example_is_not_a_prediction():
+    """Shipped, live, on this mechanism's own first real commit.
+
+    The message explained the feature and included an indented sample trailer. The
+    parser matched it and registered a prediction whose claim was `<claim>`. This is
+    the import resolver's string-literal defect in a different costume: text that looks
+    like a directive but sits inside a quotation. Git trailers live at column 0, and
+    every way of quoting one puts something in front of it.
+    """
+    msg = (
+        "feed the log as a side effect of committing\n\n"
+        "Registration moves onto the commit message:\n\n"
+        "    Predict: 0.70 2026-12-31 <claim>\n\n"
+        "A post-commit hook reads it.\n\n"
+        "Predict: 0.45 2026-12-31 the real claim\n"
+    )
+    p = parse(msg)
+    assert [x.claim for x in p.predictions] == ["the real claim"]
+    assert not p.errors
+
+
+def test_a_quoted_or_fenced_trailer_is_not_a_prediction():
+    for quoted in ("> Predict: 0.7 2026-12-31 x", "\tPredict: 0.7 2026-12-31 x",
+                   "  Predict: 0.7 2026-12-31 x", "# Predict: 0.7 2026-12-31 x"):
+        p = parse(f"work\n\n{quoted}\n")
+        assert not p.predictions and not p.errors, quoted
+
+
+# ------------------------------------------------- void: retraction without deletion
+
+def test_voiding_an_open_prediction_removes_it_from_the_score(tmp_path):
+    log = CalibrationLog(tmp_path / "c.jsonl")
+    log.predict("junk from a parser bug", 0.7, "2026-12-31")
+    log.predict("a real claim", 0.45, "2026-12-31")
+    log.void("p1", "parser matched an indented example in the commit prose")
+    assert log.score()["total"] == 1
+    assert log.score()["voided"] == 1
+    assert list(log.live_predictions()) == ["p2"]
+
+
+def test_a_void_is_appended_never_deleted(tmp_path):
+    path = tmp_path / "c.jsonl"
+    log = CalibrationLog(path)
+    log.predict("junk", 0.7, "2026-12-31")
+    before = path.read_text()
+    log.void("p1", "never a real claim")
+    after = path.read_text()
+    assert after.startswith(before)          # the original entry is untouched
+    assert log.score()["chain_ok"]           # and the chain still verifies
+    assert "p1" in log.predictions()         # still readable, just not scored
+
+
+def test_a_resolved_prediction_can_never_be_voided(tmp_path):
+    """The anti-cherry-pick rule. A loss is by definition resolved, so there is no
+    path from a bad outcome to a clean record."""
+    log = CalibrationLog(tmp_path / "c.jsonl")
+    log.predict("a claim that will lose", 0.9, "2026-12-31")
+    log.resolve("p1", "no")
+    with pytest.raises(ValueError, match="can never be voided"):
+        log.void("p1", "I would rather this had not happened")
+    assert log.score()["brier"] is not None   # the loss still counts
+
+
+def test_a_voided_prediction_cannot_be_resolved(tmp_path):
+    log = CalibrationLog(tmp_path / "c.jsonl")
+    log.predict("junk", 0.7, "2026-12-31")
+    log.void("p1", "parser artifact")
+    with pytest.raises(ValueError, match="voided"):
+        log.resolve("p1", "yes")
+
+
+def test_voiding_requires_a_reason(tmp_path):
+    log = CalibrationLog(tmp_path / "c.jsonl")
+    log.predict("x", 0.7, "2026-12-31")
+    for empty in ("", "   "):
+        with pytest.raises(ValueError, match="requires a reason"):
+            log.void("p1", empty)
+
+
+def test_voiding_twice_is_refused(tmp_path):
+    log = CalibrationLog(tmp_path / "c.jsonl")
+    log.predict("x", 0.7, "2026-12-31")
+    log.void("p1", "once")
+    with pytest.raises(ValueError, match="already voided"):
+        log.void("p1", "twice")
+
+
+def test_the_scoreboard_shows_voided_entries_rather_than_hiding_them(tmp_path):
+    log = CalibrationLog(tmp_path / "c.jsonl")
+    log.predict("junk from a parser bug", 0.7, "2026-12-31")
+    log.void("p1", "matched an indented example")
+    md = log.render()
+    assert "## Voided" in md
+    assert "junk from a parser bug" in md
+    assert "matched an indented example" in md
+
+
+def test_void_via_the_cli_commits_and_rescores(feed, capsys):
+    main(["predict", "junk", "--prob", "0.7", "--by", "2026-12-31", "--track", "t"])
+    assert main(["void", "p1", "--reason", "parser artifact", "--track", "t"]) == 0
+    assert CalibrationLog(feed / "tracks" / "t.jsonl").score()["total"] == 0
+    assert "## Voided" in (feed / "tracks" / "T.md").read_text()
