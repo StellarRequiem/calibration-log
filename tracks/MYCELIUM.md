@@ -1,6 +1,6 @@
 # Calibration scoreboard
 
-_6 predictions · 0 resolved · 6 open · chain intact ✓_
+_7 predictions · 0 resolved · 7 open · chain intact ✓_
 
 _No resolved predictions yet — the Brier score appears once you resolve one._
 
@@ -12,5 +12,6 @@ _No resolved predictions yet — the Brier score appears once you resolve one._
 - **p4** — At least one of the 4 optional undeclared edges (buildlog, claude-control, mcp-assure, verify-suite) is declared in a manifest — _p=0.3, by 2026-12-31_
 - **p5** — Mycelium's 'wired' repository-edge count is still exactly 17 — _p=0.55, by 2026-11-30_
 - **p6** — At least one of the 26 currently-unverified authority pins turns out to be a Mycelium parser artifact rather than real drift — _p=0.35, by 2026-12-31_
+- **p7** — 10.00-AGENT-INDEX.md is still drifted from the pin recorded in NOTE-OPS-INDEX-DISK-SCAN-2026-08-16.md — _p=0.65, by 2026-11-30_
 
 _Generated from an append-only, hash-chained log._
