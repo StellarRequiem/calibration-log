@@ -1,12 +1,13 @@
 # Calibration scoreboard
 
-_1 predictions · 0 resolved · 1 open · 1 voided · chain intact ✓_
+_2 predictions · 0 resolved · 2 open · 1 voided · chain intact ✓_
 
 _No resolved predictions yet — the Brier score appears once you resolve one._
 
 ## Open
 
 - **p2** — the main predictions.jsonl holds 5 or more predictions — _p=0.45, by 2026-12-31_
+- **p3** — another defect of this same shape - directive-looking text inside a quotation - is found somewhere else in this ecosystem — _p=0.6, by 2026-12-31_
 
 ## Voided
 
