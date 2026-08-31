@@ -137,6 +137,24 @@ than zero. A global `core.hooksPath` would make it zero across every repo at onc
 the price of a machine-wide setting that clobbers any other global hook — a trade worth
 making deliberately, not by default.
 
+### One caution: a tool that commits for you inherits your identity
+
+The first commit this hook ever made was authored under the machine's global git
+identity — a real name and a personal email — into a repository whose entire published
+history is pseudonymous. Caught before the push, but only because the push was checked.
+
+Anything that commits on your behalf will do this. Set the identity **per repository**,
+where it cannot be forgotten:
+
+```
+git config user.name  "<the name this repo publishes under>"
+git config user.email "<...@users.noreply.github.com>"
+```
+
+This tool deliberately does not hardcode an identity — whose name a repository publishes
+under is not a decision a CLI should make for you. It is a decision the repository should
+carry.
+
 ## Retract without deleting — `void`
 
 ```
