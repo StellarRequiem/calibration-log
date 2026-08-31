@@ -15,6 +15,7 @@ from pathlib import Path
 from .govern import AUTO_SUSPECT_HIT_RATE, govern, hit_rate
 from .log import CalibrationLog
 from .reconcile import load_source, published_resolved, reconcile
+from .trailer import parse as parse_trailers
 
 ROOT = Path(__file__).resolve().parent.parent
 LOG = ROOT / "predictions.jsonl"
@@ -84,6 +85,22 @@ def main(argv=None) -> int:
     rc.add_argument("--track", help="track under tracks/ (e.g. 'yggdrasil'); default: the main log")
     rc.add_argument("--log", help="explicit path to a track chain (overrides --track)")
     rc.add_argument("--json", action="store_true", help="machine-readable verdict")
+    ig = sub.add_parser(
+        "ingest",
+        help="register `Predict:` trailers read from a commit message on stdin")
+    ig.add_argument("--track", help="track under tracks/; default: the main log")
+    ig.add_argument("--label", default="",
+                    help="short name for where this came from, e.g. the repo name")
+    ig.add_argument("--dry-run", action="store_true", help="report, write nothing")
+    ig.add_argument("--strict", action="store_true",
+                    help="exit non-zero on a malformed trailer; off by default so a "
+                         "hook can never fail a commit")
+    hk = sub.add_parser(
+        "hook", help="install the post-commit hook that feeds this log as a side effect")
+    hk.add_argument("action", choices=["install", "status", "uninstall"])
+    hk.add_argument("--repo", required=True, help="path to the git repository")
+    hk.add_argument("--track", help="track under tracks/; default: the main log")
+    hk.add_argument("--label", help="label for ids; default: the repo directory name")
     args = ap.parse_args(argv)
 
     chain, board = _feed(getattr(args, "track", None))
@@ -113,6 +130,10 @@ def main(argv=None) -> int:
             return _verify(args)
         elif args.cmd == "reconcile":
             return _reconcile(args)
+        elif args.cmd == "ingest":
+            return _ingest(args, log, chain, board)
+        elif args.cmd == "hook":
+            return _hook(args)
     except (ValueError, KeyError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -216,3 +237,122 @@ def _reconcile(args) -> int:
     print()
     print("VERIFIED — " + r.summary() if r.ok else "GATE FAILED — " + r.summary())
     return 0 if r.ok else 1
+
+
+# ---------------------------------------------------------------- side-effect feed
+
+HOOK_MARK = "# calibration-log post-commit feed"
+
+HOOK_TEMPLATE = """#!/bin/sh
+{mark}
+# Registers any `Predict: <prob> <YYYY-MM-DD> <claim>` trailer in the commit message
+# just written, and notes a VERIFIED block that carries no forward claim.
+#
+# Deliberately post-commit: it cannot reject or delay a commit. A hook that can fail
+# the work gets bypassed and then deleted, and an unfed mechanism is what this exists
+# to fix. Every path below ends in `exit 0`.
+#
+# CALIBRATION_LOG_SKIP breaks the recursion: the ingest below commits to the log, and
+# if the log's own repo has this hook installed that commit would re-enter here.
+[ -n "$CALIBRATION_LOG_SKIP" ] && exit 0
+[ -x "{python}" ] || exit 0
+git log -1 --pretty=%B | CALIBRATION_LOG_SKIP=1 "{python}" -m calibration_log ingest {opts} 2>&1 || true
+exit 0
+"""
+
+
+def _ingest(args, log, chain, board) -> int:
+    """Read a commit message on stdin and register what it predicts.
+
+    Never fails by default. This runs from a git hook, and the contract there is that
+    the work always wins: a broken feed must cost a warning, never a commit.
+    """
+    msg = sys.stdin.read() if not sys.stdin.isatty() else ""
+    if not msg.strip():
+        return 0
+
+    parsed = parse_trailers(msg, args.label or "")
+    known = log.sources() if chain.exists() else set()
+    feed = args.track or "main"
+    registered, skipped = [], []
+
+    for p in parsed.predictions:
+        if p.src in known:
+            skipped.append(p)
+            continue
+        if args.dry_run:
+            registered.append((None, p))
+            continue
+        e = log.predict(p.claim, p.prob, p.by, src=p.src)
+        pid = e["event_data"]["id"]
+        known.add(p.src)
+        registered.append((pid, p))
+        _render(log, board)
+        _commit(f"predict {pid} [{feed}, via commit trailer]: {p.claim[:60]} (p={p.prob})",
+                chain, board)
+
+    for pid, p in registered:
+        tag = f"{pid} " if pid else "(dry-run) "
+        print(f"calibration-log: registered {tag}p={p.prob} by {p.by} — {p.claim[:70]}")
+    for p in skipped:
+        print(f"calibration-log: already registered, skipped — {p.claim[:70]}")
+    for e in parsed.errors:
+        print(f"calibration-log: {e}", file=sys.stderr)
+    if parsed.uncalibrated:
+        # Criterion 4 of the Standard. Most work honestly makes no predictive claim,
+        # so this is a note at the moment doneness is claimed — not a gate. Enforcing
+        # a quota would only manufacture filler predictions and a meaningless Brier.
+        print("calibration-log: VERIFIED block with no `Predict:` trailer — "
+              "criterion 4 (Calibrated) unexercised for this commit", file=sys.stderr)
+
+    return 1 if (args.strict and parsed.errors) else 0
+
+
+def _hook(args) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    hooks = repo / ".git" / "hooks"
+    if not hooks.is_dir():
+        print(f"error: no .git/hooks in {repo}", file=sys.stderr)
+        return 2
+    path = hooks / "post-commit"
+
+    if args.action == "status":
+        if not path.exists():
+            print(f"no post-commit hook in {repo.name}")
+            return 1
+        mine = HOOK_MARK in path.read_text(encoding="utf-8")
+        print(f"{repo.name}: post-commit hook present, "
+              f"{'feeds this log ✓' if mine else 'NOT ours — left alone'}")
+        return 0 if mine else 1
+
+    if args.action == "uninstall":
+        if not path.exists():
+            print("nothing installed")
+            return 0
+        if HOOK_MARK not in path.read_text(encoding="utf-8"):
+            print("error: post-commit hook is not ours — refusing to remove it",
+                  file=sys.stderr)
+            return 2
+        path.unlink()
+        print(f"removed {path}")
+        return 0
+
+    # install — never clobber a hook this tool did not write
+    if path.exists() and HOOK_MARK not in path.read_text(encoding="utf-8"):
+        print(f"error: {path} already exists and is not ours — refusing to overwrite.\n"
+              f"       merge the snippet by hand, or move the existing hook aside.",
+              file=sys.stderr)
+        return 2
+
+    label = args.label or repo.name
+    opts = f'--label "{label}"' + (f' --track "{args.track}"' if args.track else "")
+    path.write_text(
+        HOOK_TEMPLATE.format(mark=HOOK_MARK, python=sys.executable, opts=opts),
+        encoding="utf-8")
+    path.chmod(0o755)
+    print(f"installed {path}\n"
+          f"  label : {label}\n"
+          f"  track : {args.track or 'main log'}\n"
+          f"  usage : add a line to any commit message —\n"
+          f"          Predict: 0.70 2026-12-31 <the claim>")
+    return 0

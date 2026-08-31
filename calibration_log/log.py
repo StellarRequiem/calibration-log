@@ -30,13 +30,22 @@ class CalibrationLog:
         return {e["event_data"]["id"]: e["event_data"]["outcome"]
                 for e in self._events() if e["event_type"] == "resolve"}
 
-    def predict(self, claim: str, prob: float, by: str, actor: str = "operator") -> dict:
+    def predict(self, claim: str, prob: float, by: str, actor: str = "operator",
+                src: str | None = None) -> dict:
         prob = float(prob)
         if not 0.0 < prob < 1.0:
             raise ValueError("probability must be in (0, 1), exclusive")
         pid = f"p{len(self.predictions()) + 1}"
-        return self.chain.append(
-            "predict", {"id": pid, "claim": claim, "prob": round(prob, 4), "by": str(by)}, actor)
+        data = {"id": pid, "claim": claim, "prob": round(prob, 4), "by": str(by)}
+        if src:
+            # a stable id from outside this log, so re-presenting the same prediction
+            # (a `git commit --amend`, a hook run twice) is refused rather than duplicated
+            data["src"] = str(src)
+        return self.chain.append("predict", data, actor)
+
+    def sources(self) -> set:
+        """Every external ``src`` already registered on this chain."""
+        return {d["src"] for d in self.predictions().values() if d.get("src")}
 
     def resolve(self, pid: str, outcome, actor: str = "operator") -> dict:
         if pid not in self.predictions():
