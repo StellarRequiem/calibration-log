@@ -47,3 +47,41 @@ def test_verify_json_shape(tmp_path, capsys):
     assert rc == 0
     assert obj["ok"] is True
     assert set(obj) >= {"track", "ok", "score", "findings"}
+
+
+# ── tracks are writable, not just governable ─────────────────────────────────
+
+def test_predict_and_score_accept_a_track(tmp_path, monkeypatch):
+    """`verify` and `reconcile` took --track; predict/resolve/score did not.
+
+    A track could be governed and never written to, so anything that did not belong
+    in the main public record had no way into the system at all.
+    """
+    import calibration_log.cli as cli
+
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "LOG", tmp_path / "predictions.jsonl")
+    monkeypatch.setattr(cli, "BOARD", tmp_path / "SCOREBOARD.md")
+    monkeypatch.setattr(cli, "_git", lambda *a: None)
+    monkeypatch.setattr(cli, "_commit", lambda *a, **k: None)
+
+    assert cli.main(["predict", "a claim", "--prob", "0.4",
+                     "--by", "2026-12-31", "--track", "sidecar"]) == 0
+
+    chain = tmp_path / "tracks" / "sidecar.jsonl"
+    assert chain.is_file()
+    assert not (tmp_path / "predictions.jsonl").exists()   # main log untouched
+
+
+def test_the_main_log_remains_the_default(tmp_path, monkeypatch):
+    import calibration_log.cli as cli
+
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "LOG", tmp_path / "predictions.jsonl")
+    monkeypatch.setattr(cli, "BOARD", tmp_path / "SCOREBOARD.md")
+    monkeypatch.setattr(cli, "_git", lambda *a: None)
+    monkeypatch.setattr(cli, "_commit", lambda *a, **k: None)
+
+    assert cli.main(["predict", "b", "--prob", "0.5", "--by", "2026-12-31"]) == 0
+    assert (tmp_path / "predictions.jsonl").is_file()
+    assert not (tmp_path / "tracks").exists()
