@@ -1,6 +1,6 @@
 # Calibration scoreboard
 
-_10 predictions · 0 resolved · 10 open · chain intact ✓_
+_11 predictions · 0 resolved · 11 open · chain intact ✓_
 
 _No resolved predictions yet — the Brier score appears once you resolve one._
 
@@ -16,5 +16,6 @@ _No resolved predictions yet — the Brier score appears once you resolve one._
 - **p8** — at least 3 predictions reach the mycelium track through the commit-trailer hook rather than by hand — _p=0.6, by 2026-12-31_
 - **p9** — at least 10 of the 58 first-party repos feed the calibration log — _p=0.35, by 2026-12-31_
 - **p10** — verity-core's MergeableChain is adopted by at least one repo's real audit chain, not only its tests — _p=0.4, by 2026-12-31_
+- **p11** — at least one verity attestation is published outside verity-core's own examples/ — _p=0.3, by 2026-12-31_
 
 _Generated from an append-only, hash-chained log._
