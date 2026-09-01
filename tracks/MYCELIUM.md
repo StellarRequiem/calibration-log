@@ -1,6 +1,6 @@
 # Calibration scoreboard
 
-_11 predictions · 0 resolved · 11 open · chain intact ✓_
+_12 predictions · 0 resolved · 12 open · chain intact ✓_
 
 _No resolved predictions yet — the Brier score appears once you resolve one._
 
@@ -17,5 +17,6 @@ _No resolved predictions yet — the Brier score appears once you resolve one._
 - **p9** — at least 10 of the 58 first-party repos feed the calibration log — _p=0.35, by 2026-12-31_
 - **p10** — verity-core's MergeableChain is adopted by at least one repo's real audit chain, not only its tests — _p=0.4, by 2026-12-31_
 - **p11** — at least one verity attestation is published outside verity-core's own examples/ — _p=0.3, by 2026-12-31_
+- **p12** — the response-threshold mechanism deferred on 2026-09-01 is still unbuilt (no live allocation problem appeared to feed it) — _p=0.7, by 2026-12-31_
 
 _Generated from an append-only, hash-chained log._
